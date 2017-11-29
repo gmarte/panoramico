@@ -2,10 +2,13 @@ import csv
 from itertools import islice
 import numpy as np
 import glob
+import matplotlib.pyplot as plt
+from matplotlib import style
 import time
-from datetime import date
+from datetime import date,timedelta
 import codecs
 import pandas as pd
+style.use('ggplot')
 
 array = list()
 checktiendas = ['807','B551']
@@ -22,7 +25,8 @@ def tiendas():
 
 def ini_export():	
 	global allfiles
-	allfiles = glob.glob("C:\Users\gmarte\Documents\Ponches\LSTM\*.XLS")		
+	allfiles = glob.glob("files\*.XLS")
+	#allfiles = glob.glob("*.XLS")		
 	tiendas()
 	return;
 
@@ -68,19 +72,60 @@ with open('3months.csv', 'wb') as csvfile:
 				pf.columns = cols
 			except:
 				continue
-			newDF = newDF.append(pf,ignore_index = True)			
+			newDF = newDF.append(pf,ignore_index = True)				
 			counter = 0
 			first = 0
-			del array[:]
+			del array[:]			
+
+
+			
 #print newDF.groupby('div')['div'].count()
-tnd_results = newDF.groupby('div')['div'].count()
-print tnd_results
-tnd_results.to_csv('tiendas.csv')
+newDF.index=newDF['date']
+#mask = (newDF['date'] ==  str(date.today()))
+#newDF.loc[mask]
+yesterday = date.today() - timedelta(days=1)
+tnd_results = newDF[(newDF.date == yesterday )].groupby('div')['div'].size().reset_index(name='count')
+g2 = newDF.groupby(['date','div'])['code'].size().reset_index(name='count')
+g3 = g2.groupby('div')['count'].mean().reset_index(name='mean')
+g4 = g2.groupby('div')['count'].std().reset_index(name='std')
+#tnd_results['avg'] = newDF[(newDF.date == yesterday )].groupby('div')['div'].agg('count').mean()
+g3.set_index(['div'],inplace=True)
+g4.set_index(['div'],inplace=True)
+tnd_results.set_index(['div'],inplace=True)
+
+
+
+#tnd_results.to_csv('tiendas.csv')
 #print newDF.groupby(['div','code'])['code'].count() % 2
-group = newDF.groupby(['div','code'])['code'].count() % 2
-impares = group.groupby(level=0).sum()
-impares.to_csv('impares.csv')
-print impares
+group = newDF[(newDF.date == yesterday )].groupby(['div','code'])['code'].count() % 2
+impares = group.groupby(level=0).sum().reset_index(name='impares')
+impares.set_index(['div'],inplace=True)
+#impares.to_csv('impares.csv')
+gt_ponches = pd.concat([tnd_results,g3,g4,impares],axis = 1)
+gt_ponches['diff'] = gt_ponches['count'] - ( gt_ponches['mean'] - gt_ponches['std']/2 )
+gt_ponches.to_csv('ponches.csv')
+print(gt_ponches)
+gt_ponches.drop(gt_ponches[gt_ponches['diff'] > 0].index, inplace=True) 
+
+
+
+#### PLOT #####
+
+N = len(gt_ponches.index)
+ind = np.arange(N)    # the x locations for the groups
+width = 0.35       # the width of the bars: can also be len(x) sequence
+xtra_space = 0.05
+p1 = plt.bar(ind, gt_ponches['count'], width, color='orange', yerr=gt_ponches['impares'])
+p2 = plt.bar(ind + width + xtra_space, gt_ponches['mean'], width, color='g', yerr=gt_ponches['std'])
+
+plt.ylabel('Cantidades')
+plt.title('Ponches / Imparidades')
+plt.xticks( (ind+ width/2 + xtra_space), gt_ponches.index)
+plt.yticks(np.arange(0, 600, 20))
+plt.legend((p1[0], p2[0]), ('Ponches/Impares', 'Promedio/STDEV'))
+
+plt.show()
+
 aggregations = {
     'code':'count'	
 }
